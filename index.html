@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Control Lab - Behavioral Experiment</title>
+    <style>
+        :root {
+            --bg-color: #050505;
+            --action-green: #004d00; 
+            --hold-red: #4d0000;    
+            --task-yellow: #856404; 
+            --cum-success: #00ff00;
+            --denied-red: #ff0000;
+            --text-color: #e0e0e0;
+        }
+
+        body, html {
+            margin: 0; padding: 0; height: 100%;
+            font-family: 'Inter', 'Kanit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        /* UI หน้าแรก */
+        #landing-page { padding: 40px 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { max-width: 600px; width: 100%; }
+        .setup-group { margin-bottom: 20px; background: #1a1a1a; padding: 15px; border-radius: 10px; }
+        
+        select, button {
+            width: 100%; padding: 12px; margin: 8px 0;
+            border-radius: 5px; border: none; font-size: 1rem; cursor: pointer;
+        }
+
+        #start-btn { background: var(--cum-success); color: black; font-weight: bold; font-size: 1.2rem; margin-top: 20px; }
+
+        /* หน้าเกม */
+        #game-page {
+            display: none; height: 100%; width: 100%;
+            position: fixed; top: 0; left: 0;
+            flex-direction: column; align-items: center; justify-content: center;
+            transition: background-color 0.4s ease;
+        }
+
+        .progress-container {
+            width: 85%; height: 15px; background: rgba(255,255,255,0.1);
+            border-radius: 20px; margin-top: 40px; overflow: hidden;
+        }
+
+        #progress-bar { width: 100%; height: 100%; background: white; transition: width 0.1s linear; }
+        .instruction-text { font-size: 2.2rem; font-weight: bold; text-align: center; padding: 0 20px; }
+        
+        #fail-btn {
+            position: absolute; bottom: 30px; background: rgba(255,255,255,0.2);
+            color: white; width: auto; padding: 10px 30px; border: 1px solid white;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="landing-page">
+        <div class="container">
+            <h1 style="text-align: center; color: var(--cum-success);">THE CONTROL LAB</h1>
+            
+            <div class="setup-group">
+                <label>⏱ ระยะเวลา/ความอึดของคุณ:</label>
+                <select id="stamina">
+                    <option value="0.5">หลั่งเร็ว (สั้นมาก)</option>
+                    <option value="0.8">สั้น</option>
+                    <option value="1" selected>ปกติ</option>
+                    <option value="1.5">นาน</option>
+                    <option value="2.5">ยาวนานมาก</option>
+                </select>
+
+                <label>🔥 ระดับความยาก:</label>
+                <select id="difficulty">
+                    <option value="0.5">น่าเบื่อ</option>
+                    <option value="0.8">ง่าย</option>
+                    <option value="1" selected>ปกติ</option>
+                    <option value="1.5">ยาก</option>
+                    <option value="3">เป็นไปไม่ได้</option>
+                </select>
+
+                <label>🎭 หมวดหมู่ประสบการณ์:</label>
+                <select id="mode">
+                    <option value="normal">แบบที่ 1: ปกติ (สุภาพ/เน้นสรีระ)</option>
+                    <option value="bdsm">แบบที่ 2: ทาสส่วนตัว (BDSM/ภาษาแรง)</option>
+                </select>
+            </div>
+
+            <div style="font-size: 0.85rem; line-height: 1.4; color: #bbb; background: #222; padding: 15px; border-radius: 10px;">
+                <b>กฎการทดลอง:</b><br>
+                - 🟩 <b>เขียวเข้ม:</b> ช่วยตัวเองได้ ห้ามหลั่ง<br>
+                - 🟥 <b>แดงเข้ม:</b> หยุดทันที ห้ามแตะต้องเด็ดขาด<br>
+                - 🟨 <b>เหลือง:</b> ทำตามคำสั่งห้ามฝ่าฝืน<br>
+                - 🟩 <b>เขียวสด:</b> หลั่งได้ภายในเวลาที่กำหนด<br>
+                - 🟥 <b>แดงสด:</b> DENIED ห้ามหลั่งในวันนี้!
+            </div>
+            
+            <button id="start-btn" onclick="initGame()">ยอมรับและเริ่มทันที</button>
+        </div>
+    </div>
+
+    <div id="game-page">
+        <div id="instruction" class="instruction-text"></div>
+        <div class="progress-container">
+            <div id="progress-bar"></div>
+        </div>
+        <button id="fail-btn" onclick="endGame('RUINED')">I CUMMED (FAILED)</button>
+    </div>
+
+    <script>
+        let currentState = ''; 
+        let lastState = '';
+        let gameActive = false;
+        let timerLoop;
+        let totalElapsed = 0;
+        let staminaMult = 1;
+        let diffMult = 1;
+        let mode = 'normal';
+
+        // --- คลังคำสั่งทั้งหมด ---
+        const content = {
+            normal: {
+                green: [
+                    "ขยับมือช้าๆ เน้นสัมผัสที่ปลายยอด", "ใช้มือข้างที่ไม่ถนัดขยับจังหวะสั้นๆ",
+                    "เร่งจังหวะขึ้น 10 วินาที... แล้วกลับมาช้าลง", "กำให้แน่นที่สุดแล้วรูดขึ้นลงช้าๆ เน้นจังหวะสั้นๆ ที่หัว",
+                    "เปลี่ยนไปใช้ปลายนิ้วสัมผัสแค่ส่วนรอยหยัก", "หลับตาแล้วจินตนาการว่ากำลังถูกสัมผัสด้วยความนุ่มนวล"
+                ],
+                red: [
+                    "ปล่อยมือ... สูดลมหายใจลึกๆ 3 ครั้ง", "เกร็งกล้ามเนื้อหน้าท้องไว้ ห้ามแตะต้อง",
+                    "หลับตาลง จินตนาการถึงความเสียวที่เพิ่งผ่านมา"
+                ],
+                yellow: [
+                    "ใช้นิ้วชี้วนรอบส่วนหัว 5 รอบ", "ลูบไล้จากโคนขึ้นไปถึงปลายช้าๆ",
+                    "ใช้น้ำมันหรือเจลหล่อลื่นชโลมให้ทั่วอีกครั้ง", "ใช้นิ้วโป้งกดคลึงที่รูปลายยอดเบาๆ 10 วินาที",
+                    "นวดคลึงที่ลูกอัณฑะทั้งสองข้างสลับไปมา", "พรมน้ำลงบนส่วนหัวแล้วขยับมือเบาๆ ให้เกิดเสียงสัมผัส"
+                ]
+            },
+            bdsm: {
+                green: [
+                    "ชักควยสกปรกๆ ของมึง ห้ามแตกถ้ากูไม่สั่ง!", "ขยับมือเร็วๆ! ดิวะไอ้สัตว์ ไอ้ร่าน! เงี่ยนมากไม่ใช่อ๋อ!",
+                    "กระเด้ามือตัวเองแรงๆ! ให้สมกับความร่านของมึง!", "ชักให้เร็วที่สุด! เอาให้ใกล้แตกแต่ห้ามทะลักออกมาเด็ดขาด!",
+                    "มองควยตัวเองแล้วพูดว่า 'ผมเป็นทาสกาม' ตามจังหวะมือ!", "เร่งเครื่องเข้าไปไอ้สัตว์! เอาให้หน้ามืดแต่ห้ามหยุด!"
+                ],
+                red: [
+                    "ชูมือขึ้นเหนือหัว! มองดูควยแข็งๆ ของตัวเอง", "หยุด! คุกเข่าลงแล้วสำนึกว่าใครคือเจ้าของร่างกายแก",
+                    "นิ่งไว้... ถ้าขยับแม้แต่นิดเดียว วันนี้แกจะโดน DENIED แน่นอน"
+                ],
+                tasks: [
+                    { txt: "ตบหัวควยตัวเองเบาๆ [N] ครั้ง! โทษฐานที่มันตั้งโด่!", hands: true },
+                    { txt: "ใช้แค่ 2 นิ้วชักหัวควยตัวเองซะ!", hands: true },
+                    { txt: "เลียน้ำเงี่ยนที่ปลายยอดให้สะอาด อย่าให้เหลือแม้แต่หยดเดียวไอ้ขี้ครอก", hands: false },
+                    { txt: "เอาควยฟาดกับขอบโต๊ะจนกว่ากูจะสั่งให้หยุด!", hands: true },
+                    { txt: "เด้าอากาศแรงๆ 10 ครั้ง!", hands: false },
+                    { txt: "สะบัดควยไปมา!", hands: false }
+                ],
+                mixins: [
+                    { txt: "เอามือไพ่หลังไว้", noHands: true },
+                    { txt: "ถางขาออกกว้างๆ", noHands: false },
+                    { txt: "เด้าอากาศไปด้วย", noHands: false },
+                    { txt: "โก้งโค้งโชว์รูหีมึงมา", noHands: false },
+                    { txt: "เอามือเล่นหัวนมไว้", noHands: false, needHands: true }
+                ]
+            }
+        };
+
+        function initGame() {
+            staminaMult = parseFloat(document.getElementById('stamina').value);
+            diffMult = parseFloat(document.getElementById('difficulty').value);
+            mode = document.getElementById('mode').value;
+            document.getElementById('landing-page').style.display = 'none';
+            document.getElementById('game-page').style.display = 'flex';
+            gameActive = true;
+            nextState();
+        }
+
+        function nextState() {
+            if(!gameActive) return;
+            let endChance = (totalElapsed / (400 * staminaMult)); 
+            if (endChance > Math.random() && totalElapsed > 80) { finishGame(); return; }
+
+            let possibleStates = ['GREEN', 'RED', 'YELLOW'].filter(s => s !== lastState);
+            let state;
+            let rand = Math.random();
+
+            if (mode === 'bdsm') {
+                state = rand < 0.4 ? 'GREEN' : (rand < 0.8 ? 'YELLOW' : 'RED');
+                if (state === lastState) state = possibleStates[0];
+            } else {
+                state = possibleStates[Math.floor(Math.random() * possibleStates.length)];
+            }
+
+            if (state === 'GREEN') setGreen();
+            else if (state === 'RED') setRed();
+            else setYellow();
+            lastState = state;
+        }
+
+        function setGreen() {
+            let base = 25 * staminaMult;
+            let speedUp = 1 + (totalElapsed / 180) * diffMult; 
+            let duration = (base / speedUp) + (Math.random() * 5);
+            let list = content[mode].green;
+            let msg = list[Math.floor(Math.random() * list.length)];
+            updateView('var(--action-green)', msg, duration);
+        }
+
+        function setRed() {
+            let duration = 5 + (Math.random() * 5); 
+            let list = content[mode].red;
+            let msg = list[Math.floor(Math.random() * list.length)];
+            updateView('var(--hold-red)', msg, duration);
+        }
+
+        function setYellow() {
+            let msg = "";
+            let duration = 10 + (Math.random() * 5);
+            
+            if (mode === 'normal') {
+                msg = content.normal.yellow[Math.floor(Math.random() * content.normal.yellow.length)];
+            } else {
+                // BDSM Mixing Logic
+                let task = content.bdsm.tasks[Math.floor(Math.random() * content.bdsm.tasks.length)];
+                let mixin = content.bdsm.mixins[Math.floor(Math.random() * content.bdsm.mixins.length)];
+                
+                let finalTask = task.txt.replace("[N]", Math.floor(Math.random() * 5) + 3);
+                
+                // ตรวจสอบเงื่อนไข: ถ้าไพ่หลัง (noHands) ห้ามเล่นหัวนม (needHands) หรือทำสิ่งที่ใช้มือ (hands)
+                if (mixin.noHands && (task.hands || mixin.needHands)) {
+                    msg = mixin.txt + " แล้ว " + content.bdsm.tasks[2].txt; // ให้เลียปลายยอดแทน
+                } else {
+                    msg = mixin.txt + " " + (Math.random() > 0.5 ? "และ " + finalTask : "");
+                }
+            }
+            updateView('var(--task-yellow)', msg, duration);
+        }
+
+        function finishGame() {
+            gameActive = false;
+            clearInterval(timerLoop);
+            let win = Math.random() > 0.25;
+            let msg = win ? (mode === 'bdsm' ? "กูอนุญาตให้พ่นน้ำคาวๆ ของมึงออกมาประจานความร่านได้! แตกเดี๋ยวนี้!" : "ถึงเวลาแล้ว... ปล่อยมันออกมาให้หมดทุกหยด") 
+                          : (mode === 'bdsm' ? "หุบขาแล้วใส่กางเกง! น้ำเงี่ยนของมึงต้องเน่าคาลำไปจนถึงพรุ่งนี้!" : "ขอโทษที ร่างกายคุณยังไม่อึดพอ... พักผ่อนซะ");
+            
+            document.getElementById('game-page').style.backgroundColor = win ? 'var(--cum-success)' : 'var(--denied-red)';
+            document.getElementById('instruction').innerText = msg;
+            
+            if(win) {
+                let timeLeft = 20;
+                timerLoop = setInterval(() => {
+                    timeLeft -= 0.1;
+                    document.getElementById('progress-bar').style.width = (timeLeft/20)*100 + '%';
+                    if(timeLeft <= 0) location.reload();
+                }, 100);
+            } else {
+                setTimeout(() => location.reload(), 5000);
+            }
+        }
+
+        function updateView(color, text, duration) {
+            document.getElementById('game-page').style.backgroundColor = color;
+            document.getElementById('instruction').innerText = text;
+            let timeLeft = duration;
+            clearInterval(timerLoop);
+            timerLoop = setInterval(() => {
+                timeLeft -= 0.1;
+                totalElapsed += 0.1;
+                document.getElementById('progress-bar').style.width = (timeLeft / duration) * 100 + '%';
+                if (timeLeft <= 0) { clearInterval(timerLoop); nextState(); }
+            }, 100);
+        }
+
+        function endGame(res) {
+            gameActive = false;
+            clearInterval(timerLoop);
+            alert("บันทึกข้อมูล: คุณทำไม่สำเร็จ (หลั่งเร็วเกินไป)");
+            location.reload();
+        }
+    </script>
+</body>
+</html>
